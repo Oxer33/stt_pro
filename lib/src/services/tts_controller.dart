@@ -39,6 +39,11 @@ class TtsController extends ChangeNotifier {
   static const String _enabledKey = 'tts_enabled';
   static const String _speechRateKey = 'tts_speech_rate';
   static const String _preferredVoiceKey = 'tts_preferred_voice';
+  static const String _autoVoiceKey = 'tts_auto_voice';
+  static const String _streamingKey = 'tts_streaming';
+
+  /// Valore sentinella per l'opzione "Automatica" nel dropdown voce.
+  static const String autoVoiceValue = '__auto__';
 
   // ── Valori di default ────────────────────────────────────────────────
   static const double defaultSpeechRate = 0.5;
@@ -52,9 +57,18 @@ class TtsController extends ChangeNotifier {
   bool _initialized = false;
   bool _disposed = false;
   bool _enabled = true;
+  bool _isAutoVoice = true;
+  bool _isStreaming = false;
   double _speechRate = defaultSpeechRate;
   String? _currentBcp47;
   TtsPlaybackState _playbackState = TtsPlaybackState.stopped;
+
+  /// Coda di testi da leggere in streaming (modalità chat).
+  final List<String> _speakQueue = <String>[];
+  bool _isProcessingQueue = false;
+
+  /// Set di ID segmento già letti, per evitare duplicati.
+  final Set<String> _spokenSegmentIds = <String>{};
 
   /// Lista di voci disponibili per la lingua target corrente.
   List<Map<String, String>> _availableVoices = <Map<String, String>>[];
@@ -67,6 +81,8 @@ class TtsController extends ChangeNotifier {
 
   // ── Getter pubblici ──────────────────────────────────────────────────
   bool get isEnabled => _enabled;
+  bool get isAutoVoice => _isAutoVoice;
+  bool get isStreaming => _isStreaming;
   double get speechRate => _speechRate;
   TtsPlaybackState get playbackState => _playbackState;
   bool get isSpeaking => _playbackState == TtsPlaybackState.playing;
@@ -87,6 +103,8 @@ class TtsController extends ChangeNotifier {
     // Carica preferenze salvate
     _prefs = await SharedPreferences.getInstance();
     _enabled = _prefs?.getBool(_enabledKey) ?? true;
+    _isAutoVoice = _prefs?.getBool(_autoVoiceKey) ?? true;
+    _isStreaming = _prefs?.getBool(_streamingKey) ?? false;
     _speechRate = _prefs?.getDouble(_speechRateKey) ?? defaultSpeechRate;
     _preferredVoiceName = _prefs?.getString(_preferredVoiceKey);
 
@@ -99,6 +117,8 @@ class TtsController extends ChangeNotifier {
     _tts.setCompletionHandler(() {
       _playbackState = TtsPlaybackState.stopped;
       _notify();
+      // Processa il prossimo elemento in coda streaming.
+      unawaited(_processQueue());
     });
 
     _tts.setCancelHandler(() {
@@ -265,11 +285,67 @@ class TtsController extends ChangeNotifier {
     await _tts.speak(text);
   }
 
-  /// Ferma la riproduzione TTS in corso.
+  /// Ferma la riproduzione TTS in corso e svuota la coda streaming.
   Future<void> stop() async {
+    _speakQueue.clear();
+    _isProcessingQueue = false;
     await _tts.stop();
     _playbackState = TtsPlaybackState.stopped;
     _notify();
+  }
+
+  // ── Streaming (modalità chat) ──────────────────────────────────────
+
+  /// Abilita o disabilita la modalità streaming (auto-speak).
+  Future<void> setStreaming(final bool value) async {
+    if (_isStreaming == value) return;
+    _isStreaming = value;
+    await _prefs?.setBool(_streamingKey, value);
+    if (!_isStreaming) {
+      _speakQueue.clear();
+      _isProcessingQueue = false;
+    }
+    _notify();
+  }
+
+  /// Accoda un segmento tradotto per la lettura automatica.
+  /// [segmentId] evita di leggere lo stesso segmento due volte.
+  void enqueueSegment({
+    required final String segmentId,
+    required final String text,
+  }) {
+    if (!_enabled || !_isStreaming) return;
+    if (text.trim().isEmpty) return;
+    if (_spokenSegmentIds.contains(segmentId)) return;
+
+    _spokenSegmentIds.add(segmentId);
+    _speakQueue.add(text);
+    unawaited(_processQueue());
+  }
+
+  /// Svuota la coda e il registro dei segmenti letti.
+  void clearQueue() {
+    _speakQueue.clear();
+    _spokenSegmentIds.clear();
+    _isProcessingQueue = false;
+  }
+
+  /// Processa la coda: legge il prossimo testo se non già in riproduzione.
+  Future<void> _processQueue() async {
+    if (_isProcessingQueue || _speakQueue.isEmpty || !_enabled) return;
+    if (isSpeaking) return;
+
+    _isProcessingQueue = true;
+    while (_speakQueue.isNotEmpty && _enabled) {
+      final text = _speakQueue.removeAt(0);
+      if (text.trim().isEmpty) continue;
+
+      await speak(text);
+      // speak() è asincrono ma il completamento arriva via callback,
+      // quindi usciamo e il completionHandler richiamerà _processQueue.
+      return;
+    }
+    _isProcessingQueue = false;
   }
 
   // ── Impostazioni ─────────────────────────────────────────────────────
@@ -299,6 +375,8 @@ class TtsController extends ChangeNotifier {
   /// Seleziona una voce specifica dal dispositivo.
   Future<void> setVoice(final Map<String, String> voice) async {
     _preferredVoiceName = voice['name'];
+    _isAutoVoice = false;
+    await _prefs?.setBool(_autoVoiceKey, false);
     await _prefs?.setString(_preferredVoiceKey, _preferredVoiceName ?? '');
 
     await _tts.setVoice({
@@ -306,6 +384,16 @@ class TtsController extends ChangeNotifier {
       'locale': voice['locale'] ?? '',
     });
 
+    _notify();
+  }
+
+  /// Ripristina la selezione automatica della voce migliore.
+  Future<void> setAutoVoice() async {
+    _isAutoVoice = true;
+    _preferredVoiceName = null;
+    await _prefs?.setBool(_autoVoiceKey, true);
+    await _prefs?.remove(_preferredVoiceKey);
+    await _applyPreferredVoice();
     _notify();
   }
 

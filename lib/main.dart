@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import 'src/models/language_pack.dart';
+import 'src/screens/chat_mode_screen.dart';
 import 'src/services/live_transcriber_controller.dart';
 import 'src/services/tts_controller.dart';
 
@@ -352,6 +353,9 @@ class _ControlsCard extends StatelessWidget {
               ),
             ],
           ),
+          const SizedBox(height: 10),
+          // ── Pulsante Modalità Chat ──
+          _ChatModeButton(controller: controller),
           if (controller.isInitializing ||
               controller.isPreparingTranslation ||
               controller.errorMessage != null ||
@@ -772,21 +776,36 @@ class _VoiceDropdown extends StatelessWidget {
         currentName != null &&
         voices.any((final v) => v['name'] == currentName);
 
+    // Valore corrente: auto o nome voce specifica.
+    final dropdownValue = ttsController.isAutoVoice
+        ? TtsController.autoVoiceValue
+        : (hasCurrentVoice ? currentName : TtsController.autoVoiceValue);
+
     return DropdownButtonFormField<String>(
-      initialValue: hasCurrentVoice ? currentName : null,
+      initialValue: dropdownValue,
       decoration: const InputDecoration(labelText: 'Voce'),
-      hint: const Text('Seleziona voce'),
       borderRadius: BorderRadius.circular(18),
-      items: voices.map((final voice) {
-        final name = voice['name'] ?? 'Sconosciuta';
-        final displayName = _formatVoiceName(name);
-        return DropdownMenuItem<String>(
-          value: name,
-          child: Text(displayName, overflow: TextOverflow.ellipsis),
-        );
-      }).toList(),
+      items: [
+        // Opzione "Automatica" sempre in cima
+        const DropdownMenuItem<String>(
+          value: TtsController.autoVoiceValue,
+          child: Text('Automatica (migliore disponibile)'),
+        ),
+        ...voices.map((final voice) {
+          final name = voice['name'] ?? 'Sconosciuta';
+          final displayName = _formatVoiceName(name);
+          return DropdownMenuItem<String>(
+            value: name,
+            child: Text(displayName, overflow: TextOverflow.ellipsis),
+          );
+        }),
+      ],
       onChanged: (final selectedName) {
         if (selectedName == null) return;
+        if (selectedName == TtsController.autoVoiceValue) {
+          unawaited(ttsController.setAutoVoice());
+          return;
+        }
         final voice = voices.firstWhere(
           (final v) => v['name'] == selectedName,
           orElse: () => <String, String>{},
@@ -812,6 +831,50 @@ class _VoiceDropdown extends StatelessWidget {
       name = name[0].toUpperCase() + name.substring(1);
     }
     return name;
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ── Pulsante Modalità Chat ──────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════════════
+
+class _ChatModeButton extends StatelessWidget {
+  const _ChatModeButton({required this.controller});
+
+  final LiveTranscriberController controller;
+
+  @override
+  Widget build(final BuildContext context) {
+    // Mostra il pulsante solo se la traduzione è attiva.
+    if (!controller.isTranslationEnabled) {
+      return const SizedBox.shrink();
+    }
+
+    return OutlinedButton.icon(
+      onPressed: () {
+        // Recupera i controller dal contesto (sono nel parent state).
+        final state = context
+            .findAncestorStateOfType<_LiveTranscriberScreenState>();
+        if (state == null) return;
+
+        Navigator.of(context).push(
+          MaterialPageRoute<void>(
+            builder: (final _) => ChatModeScreen(
+              controller: state._controller,
+              ttsController: state._ttsController,
+            ),
+          ),
+        );
+      },
+      icon: const Icon(Icons.chat_rounded),
+      label: const Text('Modalità Chat'),
+      style: OutlinedButton.styleFrom(
+        minimumSize: const Size.fromHeight(48),
+        foregroundColor: const Color(0xFF0F6B5E),
+        side: const BorderSide(color: Color(0xFF0F6B5E)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+      ),
+    );
   }
 }
 

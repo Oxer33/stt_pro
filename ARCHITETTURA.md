@@ -18,13 +18,15 @@ con traduzione on-device e sintesi vocale (Text-to-Speech) del testo tradotto.
 
 ```
 lib/
-├── main.dart                          # Entry point + UI completa
+├── main.dart                          # Entry point + UI home
 ├── src/
 │   ├── models/
 │   │   └── language_pack.dart         # Modelli: LanguagePack, TranscriptSegment, seed lingue
+│   ├── screens/
+│   │   └── chat_mode_screen.dart      # Schermata Modalità Chat (bolle, TTS streaming)
 │   └── services/
 │       ├── live_transcriber_controller.dart  # Controller STT + traduzione
-│       ├── tts_controller.dart              # Controller TTS (play/stop/velocità/voce)
+│       ├── tts_controller.dart              # Controller TTS (play/stop/streaming/voce)
 │       ├── tts_language_mapper.dart          # Mappatura codici app → BCP-47 per TTS
 │       └── vosk_result_parser.dart           # Parser risultati Vosk
 packages/
@@ -59,7 +61,18 @@ Microfono → Vosk (STT offline) → Segmenti testo
 2. `tts_language_mapper.dart` converte codici app → BCP-47
 3. La lingua TTS si sincronizza automaticamente con il target di traduzione
 4. Supporto voci neurali (priorità), fallback a voci standard
-5. Impostazioni persistenti: toggle, velocità (0.5x–2.0x), voce preferita
+5. Impostazioni persistenti: toggle, velocità (0.5x–2.0x), voce preferita/auto
+6. **Modalità streaming**: coda auto-speak per segmenti tradotti in tempo reale
+7. Deduplicazione segmenti già letti via `_spokenSegmentIds`
+
+### Modalità Chat
+1. `ChatModeScreen` mostra ogni segmento come bolla chat separata
+2. Testo originale a destra, traduzione a sinistra (stile messaggeria)
+3. Testo parziale (in corso) mostrato con indicatore di caricamento
+4. Auto-scroll verso il basso ad ogni nuovo segmento
+5. TTS streaming automatico: legge ogni traduzione appena pronta
+6. Pulsante play su ogni singola bolla tradotta
+7. Indicatore LIVE quando l'ascolto è attivo
 
 ---
 
@@ -106,6 +119,9 @@ Microfono → Vosk (STT offline) → Segmenti testo
 - [x] Mappatura codici lingua app → BCP-47
 - [x] Persistenza preferenze TTS
 - [x] UI completa con card impostazioni TTS
+- [x] Opzione "Automatica" nel dropdown voce TTS
+- [x] **Modalità Chat** con bolle per ogni segmento e TTS streaming
+- [x] Auto-speak in tempo reale dei segmenti tradotti
 - [x] Build APK release funzionante
 - [x] Push su GitHub
 

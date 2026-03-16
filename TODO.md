@@ -10,6 +10,11 @@
 - [x] **Persistenza preferenze TTS** — SharedPreferences
 - [x] **UI card impostazioni TTS** — Toggle, slider velocità, dropdown voce
 - [x] **Pulsante play/stop sotto traduzione** — Con cambio colore e icona
+- [x] **Opzione voce Automatica** — Selezione automatica migliore voce disponibile
+- [x] **Modalità Chat** — Schermata dedicata con bolle per ogni segmento
+- [x] **TTS Streaming** — Lettura automatica segmenti tradotti in tempo reale
+- [x] **Auto-scroll chat** — Scorrimento automatico verso nuovi messaggi
+- [x] **Play singolo segmento** — Icona volume su ogni bolla tradotta
 - [x] **Build APK release** — `build/app/outputs/flutter-apk/app-release.apk`
 - [x] **Push GitHub** — https://github.com/Oxer33/stt_pro
 - [x] **File ARCHITETTURA.md** — Documentazione architetturale completa
